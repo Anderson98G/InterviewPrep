@@ -25,8 +25,8 @@ All planning artifacts are in the project root. Read these before making any cha
 - PRD: approved
 - Data model: approved
 - UI spec: approved
-- System design: **in review** (pending approval)
-- **Next step:** Get system design approved, then begin implementation
+- System design: **approved**
+- **Next step:** Begin implementation
 
 ---
 
@@ -72,7 +72,7 @@ AppData
   │     └── notes: Note[]               (unbounded; post-interview reflections)
   ├── sessions: Session[]        ← one Live Mode entry→exit cycle
   │     └── visits: SessionVisit[]
-  └── ui: UIState                ← persisted overlay position, collapsed categories, mode
+  └── ui: UIState                ← persisted overlay position, mode, active category filter, collapsed categories (Live Mode)
 ```
 
 See `DATA_MODEL.md` for full type definitions and a concrete JSON example.
@@ -98,6 +98,8 @@ See `DATA_MODEL.md` for full type definitions and a concrete JSON example.
 **Session tracking** — Visited state resets on each new Live Mode session. Orphaned sessions (no `endedAt`) are closed silently on boot.
 
 **Import** — Always merges, never replaces. ID conflicts resolved by assigning a new UUID automatically.
+
+**Schema migration rollback** — Before any migration runs, the pre-migration blob is saved to a snapshot key in localStorage (`interviewprep_data_v{N}_snapshot`). If a bad migration ships and the app is rolled back, the rollback build restores from the snapshot. Snapshot is deleted once the new schema is confirmed stable. Known risk: if the user is near the 5 MB localStorage quota, the double-write (snapshot + migrated data) may throw `QuotaExceededError`. Accepted for v1.0 — if this becomes a real problem for power users with months of version history, migrate the storage layer to IndexedDB (much larger quota, async API). Do not solve this prematurely.
 
 **order field is a float** — Enables O(1) drag-to-reorder. Normalized when gap between adjacent entries falls below 0.001.
 
@@ -145,3 +147,11 @@ interview-prep/
 
 ## Out of Scope for v1.0
 Search/filter in Live Mode, multiple decks, rich text, cloud sync, AI suggestions, mobile support, flashcard mode, version diff view.
+
+---
+
+## Agent Notes
+
+Tooling quirks and lessons learned — read these to avoid known pitfalls.
+
+- **Grep truncates long single-line matches.** When a result shows `[Omitted long matching line]`, the line exists but was too long to display. Always follow immediately with a `Read` at that line offset to see the full content. Never assume a truncated line contains nothing relevant.

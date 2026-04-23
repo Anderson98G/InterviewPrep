@@ -72,8 +72,8 @@ type UIState = {
   mode: "prep" | "live";
   overlayPosition: { x: number; y: number } | null;
   overlaySize: { width: number; height: number } | null; // Default: { width: 600, height: 400 }
-  collapsedCategories: Category[];      // Categories collapsed in Live Mode
   activeCategoryFilter: Category | null; // Prep Mode sidebar selection
+  collapsedCategories: Category[];       // Live Mode only — categories whose entry lists are hidden
 };
 
 type AppData = {
@@ -176,8 +176,8 @@ A single entry with 2 answer versions, 3 anchors on the active version, and 1 po
     "mode": "prep",
     "overlayPosition": { "x": 1420, "y": 80 },
     "overlaySize": { "width": 600, "height": 400 },
-    "collapsedCategories": ["Estimation", "Hiring"],
-    "activeCategoryFilter": "Leadership"
+    "activeCategoryFilter": "Leadership",
+    "collapsedCategories": []
   }
 }
 ```
@@ -190,7 +190,7 @@ A single entry with 2 answer versions, 3 anchors on the active version, and 1 po
 Anchors are not required — the field is absent on versions where the user left the Anchors field empty. When present, it is a newline-separated string of phrases. Restoring an old version restores both the prose and its anchor text together as one coherent snapshot. Keeping it as a plain string avoids unnecessary object complexity for what is essentially a short text block. Every explicit Save creates a new version regardless of whether prose, anchors, or both changed — anchor edits are versioned with the same weight as prose edits.
 
 **`lastEditedAt` is cached on `Entry`, not derived at read time**
-Live Mode renders up to 40 cards simultaneously. Computing `max(versions.map(v => v.createdAt))` on every render is unnecessary churn. Write it on save, read it cheaply.
+Live Mode renders up to 40 cards simultaneously. Computing `max(versions.map(v => v.createdAt))` on every render is unnecessary churn. Write it on save, read it cheaply. For the seed entry in `defaultData.js`, `lastEditedAt` is set equal to `createdAt` — there is no prior save, so both timestamps are identical.
 
 **`order` is a float, not an integer**
 Drag-to-reorder with integers requires renumbering the full list on every move. Floats (e.g., insert between 1.0 and 2.0 → 1.5) allow O(1) single-item updates. Renormalize to integers only if precision loss becomes an issue after many operations.
@@ -209,3 +209,6 @@ When the user deletes the last entry in the currently filtered category, the fil
 
 **Single top-level localStorage key**
 Granular keys (one per entry) would allow partial writes but complicate atomic reads and export. At the estimated 2–3 MB ceiling, a single serialized blob stays within browser limits and keeps the read/write contract simple. The `schemaVersion` field enables a future migration to IndexedDB without changing the schema shape.
+
+**Known risk — QuotaExceededError mid-migration double-write**
+The migration rollback strategy requires two writes: first the pre-migration snapshot, then the migrated main key. Before attempting either write, `runMigrations` checks current storage usage via `getStorageUsageKB()`. If usage exceeds `STORAGE_WARN_KB / 2` (2048 KB), migration is blocked entirely and the user is shown a warning to free up space — the app remains on the old schema with no data modified. This guards against the partial-write failure case. Residual risk: if data size is below 2048 KB at check time but the snapshot write still fails (e.g. due to concurrent writes from another tab), the mid-migration orphaned state described above can still occur. Accepted for v1.0 as an extremely unlikely edge case given the estimated 2–3 MB data ceiling.

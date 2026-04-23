@@ -29,8 +29,8 @@ This document defines the contract for every named utility function in the codeb
 **Postconditions / Invariants:**
 - If the key is absent, returns `null` — does not throw
 - The returned object has a `schemaVersion` equal to `CURRENT_SCHEMA_VERSION`
-- Any parse or migration error is re-thrown with a descriptive prefix for the boot sequence to catch
-- Does not write to localStorage
+- Any parse or migration error is re-thrown with the prefix `"[getFromStorage]"` (e.g. `"[getFromStorage] Failed to parse data: ..."`) for the boot sequence to catch and display
+- Does not write to the main data key (`"interviewprep_data"`); migration snapshot keys may be written by `runMigrations` as part of the migration process
 
 ---
 
@@ -93,11 +93,15 @@ This document defines the contract for every named utility function in the codeb
 
 **Preconditions:**
 - `data` has a numeric `schemaVersion` field
-- `data.schemaVersion` must be ≤ `CURRENT_SCHEMA_VERSION`; if greater, the function throws
+- `data.schemaVersion` must be ≤ `CURRENT_SCHEMA_VERSION`; if greater, the function checks for a rollback snapshot before throwing
 
 **Postconditions / Invariants:**
-- If `data.schemaVersion === CURRENT_SCHEMA_VERSION`, the data is returned unchanged
-- If `data.schemaVersion > CURRENT_SCHEMA_VERSION`, throws with a message instructing the user to update the app — does not attempt to read the data
+- If `data.schemaVersion === CURRENT_SCHEMA_VERSION`, the data is returned unchanged and no snapshot is written
+- If `data.schemaVersion > CURRENT_SCHEMA_VERSION` and a snapshot key exists, the snapshot is restored and returned; the main key and snapshot key are both updated accordingly
+- If `data.schemaVersion > CURRENT_SCHEMA_VERSION` and no snapshot exists, throws with a message instructing the user to update the app
+- `CURRENT_SCHEMA_VERSION` is `1` at initial launch; it is incremented in `migrations.js` each time a breaking schema change is introduced
+- Before applying any migration, current data size is checked via `getStorageUsageKB(data)`; if the result exceeds `STORAGE_WARN_KB / 2` (2048 KB), throws with a user-facing message: `"Migration cannot proceed: insufficient storage space. Free up space and reload."` — the app remains on the old schema, no data is modified
+- If the size check passes, the raw pre-migration blob is saved to `interviewprep_data_v{N}_snapshot`, where `{N}` is `data.schemaVersion` (the old version before migration); migrating from v1→v2 writes to `interviewprep_data_v1_snapshot`
 - Each migration function is applied in strict version order with no skipping
 - After each migration step, `schemaVersion` is incremented by exactly 1
 - The returned object's `schemaVersion` equals `CURRENT_SCHEMA_VERSION`
@@ -131,7 +135,7 @@ This document defines the contract for every named utility function in the codeb
 - The new version is at index 0 of the versions array (newest first)
 - `entry.versions.length` is at most 20 after the call
 - `entry.lastEditedAt` equals the new version's `createdAt`
-- If `anchor` is falsy, the new version has no `anchor` field (it is `undefined`, not an empty string)
+- If `anchor?.trim()` is empty or falsy, the new version has no `anchor` field (stored as `undefined`, not an empty string) — this covers `undefined`, `null`, `""`, and whitespace-only strings like `"   \n   "`
 
 ---
 
@@ -256,7 +260,8 @@ This document defines the contract for every named utility function in the codeb
 - All entries belong to the same category
 
 **Postconditions / Invariants:**
-- Returned entries have `order` values `1.0, 2.0, 3.0, …` in sorted order
+- Input entries are sorted by their current `order` value (ascending) before reassignment — this is the sort key
+- Returned entries have `order` values `1.0, 2.0, 3.0, …` in that sorted order
 - The relative order of entries is unchanged
 - Input entries are not mutated — new objects are returned
 - This is a structural mutation only; it does not create a new `AnswerVersion`
@@ -289,6 +294,34 @@ This document defines the contract for every named utility function in the codeb
 
 ---
 
+### `validateImportedData(parsed, fileSizeBytes)`
+
+**Purpose:** Validate a parsed import candidate against all structural and semantic rules before any merge is attempted. This is Pass 1 of the two-pass import algorithm.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `parsed` | `unknown` | The result of `JSON.parse()` on the imported file content |
+| `fileSizeBytes` | `number` | The byte size of the raw file, used for the size guard |
+
+**Returns:** `void` — throws on the first validation error encountered.
+
+**Preconditions:**
+- `parsed` is the direct output of `JSON.parse()`; the caller is responsible for catching JSON syntax errors and converting them to the standard error message before calling this function
+- `fileSizeBytes` is a non-negative integer
+
+**Postconditions / Invariants:**
+- If all checks pass, returns `void` and no data is modified
+- Checks are evaluated in strict order; the function throws on the first failure:
+  1. `fileSizeBytes > 10_485_760` (10 MB) → throws `"File exceeds 10MB and cannot be imported"`
+  2. `parsed` is missing `schemaVersion` or `entries` → throws `"File does not appear to be a PM Interview Prep export"`
+  3. Any entry is missing a required field (`id`, `question`, `category`, `order`, `versions`, `createdAt`, `lastEditedAt`) → throws `"Missing required field: [field] on entry [n]"`
+  4. Any entry has a `category` value not in `CATEGORY_LIST` → throws `"Unknown category '[value]' on entry [n]"`
+  5. Any entry has zero or more than one version with `isActive: true` → throws `"Entry [n] has no active answer version"` or `"Entry [n] has multiple active versions"`
+- Does not mutate `parsed`
+- Does not read from or write to localStorage
+
+---
+
 ### `importData(imported, existing)`
 
 **Purpose:** Merge an imported deck into the existing app data using a two-pass validate-then-merge algorithm that never overwrites existing data and auto-resolves ID conflicts.
@@ -306,6 +339,7 @@ This document defines the contract for every named utility function in the codeb
 - Every entry in `imported.entries` has exactly one `isActive: true` version
 
 **Postconditions / Invariants:**
+- If every entry ID in `imported.entries` already exists in `existing.entries`, throws `"This file has already been imported. No new entries were found."` — no data is modified; this check uses the same O(1) Set built for Pass 2 and is evaluated before any mutation
 - All existing entries and sessions are preserved unchanged
 - All imported entries appear in the result; none are dropped
 - No two entries in the result share the same `id` — conflicts are resolved by assigning a new UUID to the imported entry
@@ -334,6 +368,90 @@ This document defines the contract for every named utility function in the codeb
 - If `versions.length > 20`, the result contains the active version plus the 19 most recent inactive versions (sorted by `createdAt` descending)
 - The active version is always present in the result
 - Older inactive versions beyond the 19 most recent are discarded
+
+---
+
+## `src/store/useQAStore.js`
+
+---
+
+### `addEntry(question, category, prose, anchor)`
+
+**Purpose:** Create a new Q&A entry with its initial answer version and append it to the entries array.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `question` | `string` | The question text |
+| `category` | `Category` | One of the 7 predefined category values |
+| `prose` | `string` | The initial answer body text |
+| `anchor` | `string \| undefined` | Optional anchor phrases; omit or pass empty string for no anchor |
+
+**Returns:** `void` — mutates Zustand store state and persists to localStorage via `saveToStorage`.
+
+**Preconditions:**
+- `question` is a non-empty string after trimming
+- `category` is a valid value from `CATEGORY_LIST`
+
+**Postconditions / Invariants:**
+- A new `Entry` is appended to `state.entries` with a UUID from `crypto.randomUUID()`
+- The entry's `versions` array contains exactly one `AnswerVersion` with `isActive: true` — this is version 1, created at entry creation time, not by a subsequent Save
+- `version.createdAt` equals `entry.createdAt` equals `entry.lastEditedAt` — all set to the same `Date.now()` ISO timestamp
+- If `anchor?.trim()` is empty or falsy, the version has no `anchor` field (`undefined`)
+- The new entry's `order` value is set to `max(existing orders in category) + 1.0`, placing it at the bottom of its category
+- `saveToStorage` is called; on `{ ok: false }`, the store surfaces the error and does not add the entry
+
+---
+
+## `src/store/useSessionManager.js`
+
+---
+
+### `startSession()`
+
+**Purpose:** Create a new `Session` and transition the app from IDLE to ACTIVE state when the user enters Live Mode.
+
+| Parameter | Type | Description |
+|---|---|---|
+| — | — | No parameters |
+
+**Returns:** `void` — mutates Zustand store state and persists to localStorage via `saveToStorage`.
+
+**Preconditions:**
+- Current session state is IDLE (no session in `state.sessions` has an absent `endedAt`)
+- Called on the `IDLE → ACTIVE` transition, which fires in two cases: (1) the user clicks the mode toggle to enter Live Mode, or (2) the app boots with `ui.mode === 'live'` (the default)
+
+**Postconditions / Invariants:**
+- A new `Session` is created with:
+  - `id`: `crypto.randomUUID()`
+  - `startedAt`: current timestamp as ISO 8601 string
+  - `endedAt`: absent (`undefined`)
+  - `visits`: `[]`
+- The new session is appended to `state.sessions`
+- If `state.sessions.length` exceeds 50 after the append, the oldest session (by `startedAt`) is removed before saving
+- `state.activeSessionId` is set to the new session's `id`
+- `saveToStorage` is called with the updated state; on `{ ok: false }`, the error is surfaced but the session is still held in memory for the duration of the Live Mode visit
+
+---
+
+### `cancelSession()`
+
+**Purpose:** Roll back a zero-visit session when the user toggles from Live Mode to Prep Mode without having visited any entries. Called on the `ACTIVE → IDLE` transition when `visits.length === 0`.
+
+| Parameter | Type | Description |
+|---|---|---|
+| — | — | No parameters |
+
+**Returns:** `void` — mutates Zustand store state and persists to localStorage via `saveToStorage`.
+
+**Preconditions:**
+- Current session state is ACTIVE
+- The active session's `visits` array is empty
+
+**Postconditions / Invariants:**
+- The active session record is removed from `state.sessions` (the record appended by `startSession()` is deleted)
+- `state.activeSessionId` is set to `null`
+- `saveToStorage` is called with the updated state
+- The session cap pruning applied during `startSession()` is not reversed — if an old session was pruned when this session was created, it remains pruned
 
 ---
 

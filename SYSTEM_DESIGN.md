@@ -57,8 +57,9 @@ Executed synchronously before React renders any UI:
 2. `runMigrations(data)` — upgrade `schemaVersion` if needed
 3. `closeOrphanedSessions()` — set `endedAt = now` on any session with no `endedAt`
 4. `applySeedIfFirstLaunch()` — if `entries.length === 0`, insert the `defaultData` seed entry
-5. `setInitialState(data)` — populate the Zustand store
-6. `render()` — React takes over
+5. `forceMode(data)` — overwrite `data.ui.mode = "live"` unconditionally before handing data to the store (Live Mode is always the entry point; any persisted `"prep"` value from a previous session is discarded on boot)
+6. `setInitialState(data)` — populate the Zustand store
+7. `render()` — React takes over
 
 Steps 1–5 run in `main.jsx` before `ReactDOM.createRoot(...).render(...)`. If step 1 or 2 throws an unrecoverable error, render a blocking full-screen error:
 
@@ -70,16 +71,27 @@ Steps 1–5 run in `main.jsx` before `ReactDOM.createRoot(...).render(...)`. If 
 
 **Location:** `src/utils/migrations.js`
 
-The current schema version is defined as a constant (`CURRENT_SCHEMA_VERSION`). Individual migration functions are stored in a registry keyed by the version number they produce — for example, the function that upgrades data from v0 to v1 is registered at key `1`.
+The current schema version is defined as a constant (`CURRENT_SCHEMA_VERSION = 1`) in `migrations.js`. This is the initial value at launch — increment it only when a breaking schema change requires a migration. Individual migration functions are stored in a registry keyed by the version number they produce — for example, the function that upgrades data from v1 to v2 is registered at key `2`.
 
 `runMigrations` receives the parsed `AppData` object. It first checks whether the data's `schemaVersion` exceeds `CURRENT_SCHEMA_VERSION` — if so, the data was written by a newer version of the app and the function throws immediately with a message telling the user to update the app. Otherwise, it iterates from the data's current schema version up to `CURRENT_SCHEMA_VERSION`, applying each registered migration function in sequence. After each migration function runs, `schemaVersion` is incremented by one. The fully migrated object is returned. If no migrations are needed (schema version is already current), the data is returned unchanged.
 
 After `runMigrations` completes successfully, `saveToStorage()` is called once to persist the upgraded schema to localStorage.
 
 **Rules:**
-- Migrations are forward-only — no rollback
 - Each migration function receives the full `AppData` object and returns a new one
-- A data file from a newer schema version throws immediately — do not attempt to read it
+- A data file from a newer schema version cannot be read by the current app — see rollback strategy below
+
+**Rollback strategy — pre-migration snapshot:**
+
+Before `runMigrations` applies any transformation:
+
+1. **Check available storage.** Estimate the current data size using `getStorageUsageKB(data)`. If the result exceeds `STORAGE_WARN_KB / 2` (2048 KB), there is insufficient headroom to safely double-write the snapshot and the migrated data — throw an error surfacing a warning to the user that migration cannot proceed due to insufficient storage space. The app remains on the old schema until the user frees up space.
+2. **Write the snapshot.** If the size check passes, save the raw pre-migration blob to `interviewprep_data_v{N}_snapshot`, where `{N}` is the data's schema version *before* migration (i.e. the old version). For example, migrating from v1 to v2 writes the snapshot to `interviewprep_data_v1_snapshot`. This ensures a v1 rollback build can locate the snapshot by checking the key for its own version number.
+3. **Apply migrations and write the main key.**
+
+If a bad migration ships and the app must be rolled back to the previous version, the rollback build checks for the snapshot key when it encounters data with a `schemaVersion` newer than it expects. If the snapshot exists, it restores from it (writing it back to the main key) and deletes the snapshot key. The user is returned to their pre-migration data with no visible disruption.
+
+The snapshot key is deleted once the new schema has been stable and rollback is no longer needed.
 
 **Adding a v1→v2 migration:**
 1. Increment `CURRENT_SCHEMA_VERSION` to `2`
@@ -113,11 +125,13 @@ The app registers a `storage` event listener on initialization. When the app is 
 - Filter on `event.key === 'interviewprep_data'` before acting — ignore all other storage changes
 - Delegate to `getFromStorage()` in the handler (not `event.newValue` directly) so schema migrations run correctly on the received value
 - Wrap the handler in `try/catch` — an uncaught exception in a `storage` event handler propagates as an unhandled error and can crash the React render
-- Guard against `event.newValue === null` (fired when the key is deleted) — ignore silently or surface an error
+- Guard against `event.newValue === null` (fired when the key is deleted in another tab) — ignore silently; this is an unlikely manual dev-tools action and not worth surfacing to the user
 - Register the listener after `setInitialState()` completes in the boot sequence to avoid the handler firing on an uninitialized store
 - The `storage` event does not fire on the writing tab — no self-triggering loop to guard against
 
 **Inline editor safety:** Rehydration updates Zustand only. Inline editor dirty values live in `QuestionCard` component state, which is untouched by store rehydration — an unsaved draft is never discarded due to a cross-tab sync.
+
+**Known risk — simultaneous same-entry editing across tabs:** If two tabs both have the inline editor open for the same entry and one tab saves, the other tab's Zustand store rehydrates with the new version but its editor draft remains unchanged. If the user in the second tab then saves, they silently overwrite the first tab's save with no warning. Accepted for v1.0: this is a single-user tool and the scenario requires deliberately editing the same entry in two tabs at the same time.
 
 ---
 
@@ -171,9 +185,9 @@ ABANDONED→ detected on boot; session has no endedAt → immediately set endedA
 
 | From | To | Trigger | Data mutation |
 |---|---|---|---|
-| IDLE | ACTIVE | User toggles to Live Mode | Create new `Session` with `startedAt = now`, append to sessions (prune to 50) |
+| IDLE | ACTIVE | User toggles to Live Mode, OR app boots with `ui.mode === 'live'` | Create new `Session` with `startedAt = now`, append to sessions (prune to 50) |
 | ACTIVE | DEBRIEF | User toggles to Prep AND `visits.length >= 1` | None — session stays open |
-| ACTIVE | IDLE | User toggles to Prep AND `visits.length === 0` | No session record written |
+| ACTIVE | IDLE | User toggles to Prep AND `visits.length === 0` | Delete the session record that was written on IDLE→ACTIVE (rollback); no session persisted |
 | DEBRIEF | ACTIVE | User clicks "Back" in Debrief | None — session stays open, visited state preserved |
 | DEBRIEF | IDLE | User clicks "Save & End Session" | Write notes to entries, set `session.endedAt = now`, save |
 | DEBRIEF | IDLE | User clicks "Skip" | Set `session.endedAt = now`, save |
@@ -205,6 +219,8 @@ Locates the target version by ID and throws if not found. Creates a copy of that
 
 If the versions array has 20 or fewer entries, it is returned unchanged. Otherwise, the function finds the oldest inactive version by reversing the array and locating the first entry whose `isActive` is `false`, then translates that reversed index back to the original position. That entry is removed and the resulting array is returned. The active version is never a candidate for removal.
 
+Note: this removes exactly one entry because it is called on every Save (the array is at most one over cap at any point). The import path uses `enforceImportVersionCap` instead, which may need to trim many entries at once and therefore uses a sort-by-`createdAt` approach. Do not replace one with the other.
+
 ### Helpers
 
 `getActiveVersion(entry)` finds and returns the single version in the entry's versions array where `isActive` is `true`.
@@ -226,18 +242,22 @@ Serializes the full `AppData` object to a pretty-printed JSON string (2-space in
 **Pass 1: Validate**
 
 Check in order (stop at first error):
-1. Is it valid JSON? → "File is not valid JSON and cannot be read"
-2. Does it have `schemaVersion` and `entries`? → "File does not appear to be a PM Interview Prep export"
-3. For each entry: required fields present? → "Missing required field: [field] on entry [n]"
-4. For each entry: valid category? → "Unknown category '[value]' on entry [n]..."
-5. For each entry: exactly one `isActive: true` version? → "Entry [n] has no active answer version"
-6. File size > 10MB? → "File exceeds 10MB and cannot be imported"
+1. Is it valid JSON? → "File is not valid JSON and cannot be read" (pre-validation, before `validateImportedData()` is called)
+2. File size > 10MB? → "File exceeds 10MB and cannot be imported"
+3. Does it have `schemaVersion` and `entries`? → "File does not appear to be a PM Interview Prep export"
+4. For each entry: required fields present? → "Missing required field: [field] on entry [n]"
+5. For each entry: valid category? → "Unknown category '[value]' on entry [n]..."
+6. For each entry: exactly one `isActive: true` version? → "Entry [n] has no active answer version"
 
 No data is modified if any validation error is thrown.
 
+**Pre-check: duplicate file detection**
+
+Before merging, collect the IDs of all existing entries into a Set for O(1) lookup. If every entry ID in `imported.entries` is present in that Set, the file has already been imported — throw with the message `"This file has already been imported. No new entries were found."` No data is modified. If at least one entry ID is absent from the existing Set, proceed with the merge — partial overlaps are valid (e.g. re-importing an older backup after local entries were deleted).
+
 **Pass 2: Merge**
 
-The merge proceeds in four steps. First, the IDs of all existing entries and sessions are collected into sets for O(1) lookup. Second, a remap table is built for any imported session whose ID collides with an existing session ID — each conflicting session is mapped to a new UUID. Third, each imported entry is processed: if its ID collides with an existing entry ID it receives a new UUID; each of its notes has its `sessionId` rewritten using the remap table if that session was remapped; and its versions are passed through `enforceImportVersionCap` to trim to 20 if needed. Imported sessions with conflicting IDs are assigned their remapped IDs. Fourth, the remapped entries and sessions are appended to the existing arrays. The combined sessions array is pruned to the 50 most recent entries.
+The merge proceeds in four steps. First, the IDs of all existing entries and sessions are collected into sets for O(1) lookup (reusing the Set from the pre-check). Second, a remap table is built for any imported session whose ID collides with an existing session ID — each conflicting session is mapped to a new UUID. Third, each imported entry is processed: if its ID collides with an existing entry ID it receives a new UUID; each of its notes has its `sessionId` rewritten using the remap table if that session was remapped; and its versions are passed through `enforceImportVersionCap` to trim to 20 if needed. Imported sessions with conflicting IDs are assigned their remapped IDs. Fourth, the remapped entries and sessions are appended to the existing arrays. The combined sessions array is pruned to the 50 most recent entries.
 
 **Version cap on import: `enforceImportVersionCap(versions)`**
 
@@ -313,8 +333,8 @@ All UUID generation uses `crypto.randomUUID()`. See CLAUDE.md for why `Math.rand
 | `Sidebar.jsx` | `entries`, `ui.activeCategoryFilter` |
 | `QuestionList.jsx` | `entries` (filtered) |
 | `QuestionCard.jsx` | single `entry` |
-| `LiveOverlay.jsx` | `ui.overlayPosition`, `ui.overlaySize`, `ui.collapsedCategories` |
-| `QuestionIndex.jsx` | `entries`, `ui.collapsedCategories`, `activeSessionId` |
+| `LiveOverlay.jsx` | `ui.overlayPosition`, `ui.overlaySize`, `entries` (to derive `emptyCategoryNames`) |
+| `QuestionIndex.jsx` | `entries`, `activeSessionId`, `ui.collapsedCategories` |
 | `AnswerView.jsx` | single `entry`, active version |
 | `DebriefScreen.jsx` | current session, visited entries |
 
@@ -322,7 +342,7 @@ All UUID generation uses `crypto.randomUUID()`. See CLAUDE.md for why `Math.rand
 
 | Component | Key props |
 |---|---|
-| `CategoryJumpStrip` | `categories`, `activeCategory`, `onPillClick`, `scrollContainerRef` |
+| `CategoryJumpStrip` | `categories`, `activeCategory`, `onPillClick`, `scrollContainerRef`, `emptyCategoryNames: Set<string>` |
 | `CategoryGroup` | `category`, `entries`, `isCollapsed`, `onToggle`, `onEntryClick` |
 | `QuestionRow` | `entry`, `isVisited`, `onClick` |
 | `AddQuestionForm` | `onSubmit`, `onDiscard` |
@@ -365,8 +385,8 @@ These were intentionally left to implementation time. A concrete recommendation 
 | 2 | Drag handle affordance in Prep Mode | Show a `⠿` grip icon on the left of each card, visible on hover only. `useSortable`'s `listeners` attached to this handle element. |
 | 3 | Word count algorithm | Count whitespace-separated tokens: `prose.trim().split(/\s+/).filter(Boolean).length`. Consistent with user expectations. |
 | 4 | Scroll restoration for L-06 (Back button) | Store scroll position in `QuestionIndex` component state on `AnswerView` mount. Use `display: none` on `QuestionIndex` rather than unmounting it — preserves DOM scroll position without storing a pixel value. |
-| 5 | Visited Set derivation | Derive `visitedEntryIds: Set<string>` from `currentSession.visits` in the store selector. Pass as prop to `QuestionIndex` → `CategoryGroup` → `QuestionRow`. |
-| 6 | Debrief note persistence across Back→re-entry | Store debrief note text in `DebriefScreen` component state. On "Back", keep the component mounted but hidden (CSS `display: none`) so state is preserved. Unmount only on "Save & End Session" or "Skip". |
+| 5 | Visited Set derivation | Compute `visitedEntryIds: Set<string>` inside `useSessionManager` using `useMemo` over the active session's `visits` array. Expose it as a return value alongside `activeSessionId`. `QuestionIndex` calls `useSessionManager()` to get it and passes it down as a prop to `CategoryGroup` → `QuestionRow`. Memoization is handled once inside the hook; call sites require no custom equality logic. |
+| 6 | Debrief note persistence across Back→re-entry | **Discard means discard.** When the user clicks "Back" and confirms "Discard" in the confirmation dialog, clear all note textarea state and unmount `DebriefScreen`. On re-entry to Debrief (user returns to Live and toggles to Prep again with ≥1 visit), the component mounts fresh with empty note fields. Notes are only written to `Entry.notes[]` on "Save & End Session". |
 | 7 | Minimize/restore animation | No animation per discretion principle. Toggle a CSS class that sets `height: 28px; overflow: hidden` on the overlay container. ≤80ms per spec. |
 | 8 | `activeCategoryFilter` in Sidebar | Keep filter active when category is emptied. Show "No entries in [Category]" with a "Show All" button that sets `activeCategoryFilter = null`. |
 | 9 | `@dnd-kit` sensor configuration | Use `PointerSensor` with a `activationConstraint: { distance: 8 }` to prevent accidental drag on click. |

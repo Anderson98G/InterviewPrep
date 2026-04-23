@@ -251,6 +251,16 @@ All text: `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
 - Visited state is session-scoped: resets at the start of each new Live Mode session
 - No manual toggle — no UI element required on the question row
 
+#### Category Group Headers (Live Mode collapse affordance)
+- Each category section in the Question Index has a sticky header row
+- Height: 28px; background: `#0f0f0f`; font: 11px, 600 weight, uppercase, `#9ca3af`
+- Right side: chevron icon (›) — rotated 90° (pointing down) when expanded, 0° (pointing right) when collapsed
+- Clicking anywhere on the header row toggles collapsed/expanded state for that category
+- Collapsed state: header row remains visible; entry rows are hidden (height 0, no scroll space occupied)
+- When a category group is collapsed and its jump strip pill is clicked, the group auto-expands before scrolling
+- Collapsed state is persisted in `ui.collapsedCategories` (Live Mode only — Prep Mode has no collapse affordance)
+- All categories start expanded on first launch; collapse state persists across sessions
+
 ### 4.3 Category Jump Strip
 
 #### 7 Pill Buttons
@@ -272,8 +282,10 @@ All text: `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
 - Default: transparent background, 1px `#4b5563` border, off-white text
 - Hover: amber border, `#0f0f0f` background tint
 - Active (section in view): `#D97706` border and text, `#0f0f0f` background
+- Disabled (category has no entries): opacity 40%, `pointer-events: none` — no hover, no click response; pill shape and position in the strip are preserved so the layout never shifts
 - On click: instant scroll to category group; if target group is collapsed, auto-expand before scrolling
 - Does not collapse/expand categories — scroll only
+- Disabled state is derived live from the entry count per category in the store — activates automatically when the first entry is added to an empty category
 
 ### 4.4 Answer View (Live Mode)
 
@@ -312,7 +324,7 @@ All text: `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
 #### Header (64px)
 - Left: "← Back" button — 14px, `#e8e8e8`, transparent background; hover `#3a3a3a`; focus ring amber 2px
   - If any note field has text: shows confirmation dialog before returning to Live Mode
-  - Confirmation: "You have unsaved notes. Return to Live Mode?" → Cancel / Discard
+  - Confirmation: "You have unsaved notes. Return to Live Mode?" → Keep editing / Discard notes
 - Center: "Interview Debrief" — 18px, 600 weight, `#e8e8e8`
 - Right: "Skip" button — 14px, `#e8e8e8`, transparent; hover `#3a3a3a`
   - Silently ends session, sets `session.endedAt`, navigates to Prep Mode
@@ -484,6 +496,9 @@ All text: `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
 - Label: "Version" tag — small, green background
 - Restore button: appears on hover, green, ≥32px wide
 - On restore: confirmation dialog → "Restore this version?" → Yes / Cancel
+- If the version has a `restoredFrom` field: show a plain-text annotation below the preview (no link)
+  - Source version still in history → `"Restored from version created [date]"` (12px gray)
+  - Source version was pruned → `"Restored from a prior version (no longer in history)"` (12px gray)
 
 #### Note Entry
 - Timestamp: same format as version
@@ -596,7 +611,7 @@ All text: `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
 
 ### ARIA
 - Mode toggle: `role="switch"`, `aria-checked`
-- Category headers (collapsible): `aria-expanded`
+- Live Mode category group headers (collapsible per PRD L-04): `aria-expanded`
 - Dialogs: `role="dialog"`, `aria-labelledby`, `aria-describedby`
 - Icon-only buttons: `aria-label`
 - All inputs: associated `<label>` or `aria-label`
@@ -639,6 +654,7 @@ All text: `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
 | Unknown category | "Unknown category '[value]' on entry [n]; must be one of: Product sense, Leadership, Strategy, Estimation, Execution, Hiring, Team management" |
 | No active version | "Entry [n] has no active answer version" |
 | File too large | "File exceeds 10MB and cannot be imported" |
+| Duplicate import | "This file has already been imported. No new entries were found." |
 
 ### Error Display
 - Position: inline below triggering field, or in a banner at top of panel
@@ -716,9 +732,10 @@ In Tailwind CSS v4.1, design tokens are declared as CSS custom properties inside
   --touch-target-min:    32px;
   --touch-target-ideal:  44px;
   --pill-height:         28px;
-  --header-height:       44px;
-  --debrief-header-h:    64px;
-  --debrief-footer-h:    64px;
+  --header-height:            44px;
+  --answer-view-header-height: 40px;
+  --debrief-header-h:         64px;
+  --debrief-footer-h:         64px;
 
   /* Typography */
   --font-size-xs:       11px;
