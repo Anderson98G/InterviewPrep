@@ -67,7 +67,7 @@ export default function LiveOverlay({ onModeToggle }) {
           userSelect: 'none',
         }}
       >
-        <span style={{ fontSize: 12, color: '#D97706', fontWeight: 600 }}>Interview Prep</span>
+        <span style={{ fontSize: 12, color: '#D97706', fontWeight: 600 }}>Q&A Panel</span>
         <button
           onClick={() => setIsMinimized(false)}
           style={{
@@ -127,7 +127,7 @@ export default function LiveOverlay({ onModeToggle }) {
           }}
         >
           <span style={{ fontSize: 12, fontWeight: 600, color: '#D97706', letterSpacing: '0.05em' }}>
-            INTERVIEW PREP
+            Q&A PANEL
           </span>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

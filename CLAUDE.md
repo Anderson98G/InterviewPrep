@@ -1,4 +1,4 @@
-# PM Interview Prep — Project Context
+# Interview Q&A Panel — Project Context
 
 ## What This Is
 A personal web app for a Director of Product candidate to use during live Zoom interviews. It has two modes:
@@ -107,7 +107,7 @@ See `DATA_MODEL.md` for full type definitions and a concrete JSON example.
 
 ## File Structure
 ```
-interview-prep/
+interview-qa-panel/
 ├── index.html
 ├── vite.config.js
 ├── package.json

@@ -1,5 +1,5 @@
 # Product Requirements Document
-## PM Interview Prep
+## Interview Q&A Panel
 
 **Version:** 1.1
 **Date:** 2026-04-20
@@ -13,7 +13,7 @@
 Director of Product candidates preparing for leadership interviews face a specific challenge: PM interviews span a wide range of topics — product craft, strategy, metrics, estimation, team management, hiring, and leadership. Under interview pressure even well-prepared candidates experience mental blanks, lose answer structure mid-response, or struggle to recall the right example at the right moment.
 
 Top pain points identified:
-1. Even if they recall the right example, structuring their response in the most impactful way is impossible in the interview context without pre-interview prep.
+1. Even if they recall the right example, structuring their response in the most impactful way is impossible in the interview context without pre-interview preparation.
 2. Answers evolve over time — through mock interviews, coaching, and self-reflection — but candidates have no easy way to review or restore older versions.
 
 ### Target User
@@ -100,7 +100,7 @@ A two-mode web application:
 | P-05 | User can filter the card list by category using a sidebar | Only entries matching the selected category are shown; "All" shows every entry | Must Have |
 | P-06 | User can export all entries (including version history) as a JSON file | File downloads immediately; a success banner confirms the filename and entry count | Must Have |
 | P-07 | User can import entries from a previously exported JSON file; imported entries are merged into the existing deck | If an imported entry's ID conflicts with an existing entry, the imported entry is assigned a new UUID automatically; no data is lost and no user intervention is required | Must Have |
-| P-08 | Import rejects malformed or schema-invalid files with a human-readable error; existing data is not modified | Checks are applied in this order: (1) "File is not valid JSON and cannot be read" (pre-validation, JSON parse failure) (2) "File exceeds 10MB and cannot be imported" (3) "File does not appear to be a PM Interview Prep export" (4) "Missing required field: [field] on entry [n]" (5) "Unknown category '[value]' on entry [n]; must be one of: Product sense, Leadership, Strategy, Estimation, Execution, Hiring, Team management" (6) "Entry [n] has no active answer version" (7) If an imported entry has more than 20 version snapshots, the oldest non-active versions are silently trimmed to 20 on import — the active version is always preserved; a warning note is appended to the import success banner: "N entries had version history trimmed to the 20-version limit."; no data is modified on any hard error | Must Have |
+| P-08 | Import rejects malformed or schema-invalid files with a human-readable error; existing data is not modified | Checks are applied in this order: (1) "File is not valid JSON and cannot be read" (pre-validation, JSON parse failure) (2) "File exceeds 10MB and cannot be imported" (3) "File does not appear to be an Interview Q&A Panel export" (4) "Missing required field: [field] on entry [n]" (5) "Unknown category '[value]' on entry [n]; must be one of: Product sense, Leadership, Strategy, Estimation, Execution, Hiring, Team management" (6) "Entry [n] has no active answer version" (7) If an imported entry has more than 20 version snapshots, the oldest non-active versions are silently trimmed to 20 on import — the active version is always preserved; a warning note is appended to the import success banner: "N entries had version history trimmed to the 20-version limit."; no data is modified on any hard error | Must Have |
 | P-09 | Structural changes persist to localStorage immediately on every mutation; inline text edits (answer body, question text, anchors) persist only on explicit Save per P-02 | Reorder, category filter, collapse state, and session visits survive a hard browser refresh; unsaved inline text edits are discarded on refresh | Must Have |
 | P-10 | The question field accepts text input and has a visible character counter — visual spec: UI_SPEC.md §9.1 | Mandatory field | Must Have |
 | P-11 | The answer field shows a live word count — visual spec: UI_SPEC.md §9.2 | Word count updates on every keystroke; displayed as a plain number with no color coding | Must Have |

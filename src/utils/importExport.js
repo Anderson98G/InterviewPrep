@@ -11,7 +11,7 @@ export function exportData(data) {
   const date = new Date().toISOString().slice(0, 10);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `interview-prep-export-${date}.json`;
+  a.download = `interview-qa-panel-export-${date}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -1,5 +1,5 @@
 # UI Specification
-## PM Interview Prep
+## Interview Q&A Panel
 
 **Version:** 1.0
 **Date:** 2026-04-21
@@ -649,7 +649,7 @@ All text: `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
 | Error | Message |
 |---|---|
 | Not JSON | "File is not valid JSON and cannot be read" |
-| Wrong schema | "File does not appear to be a PM Interview Prep export" |
+| Wrong schema | "File does not appear to be an Interview Q&A Panel export" |
 | Missing required field | "Missing required field: [field] on entry [n]" |
 | Unknown category | "Unknown category '[value]' on entry [n]; must be one of: Product sense, Leadership, Strategy, Estimation, Execution, Hiring, Team management" |
 | No active version | "Entry [n] has no active answer version" |

@@ -1,4 +1,4 @@
-# PM Interview Prep — Implementation Plan
+# Interview Q&A Panel — Implementation Plan
 
 ## Dependency Graph
 
@@ -313,7 +313,7 @@ Each phase produces a runnable app. No phase can begin until the prior phase is 
 ### Key Edge Cases
 - Import where session IDs conflict and notes reference those sessions → `Note.sessionId` rewritten to new session UUID.
 - 10.0 MB file → passes. 10.1 MB file → size error (checked before schema validation).
-- Export filename format: `interview-prep-export-YYYY-MM-DD.json` with today's date.
+- Export filename format: `interview-qa-panel-export-YYYY-MM-DD.json` with today's date.
 - Import with `"entries": []` → passes validation, merges 0 entries, banner says "Imported 0 entries."
 
 ---

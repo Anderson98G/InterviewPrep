@@ -1,5 +1,5 @@
 # Data Model
-## PM Interview Prep
+## Interview Q&A Panel
 
 **Version:** 1.0
 **Date:** 2026-04-21

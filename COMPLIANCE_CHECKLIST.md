@@ -1,4 +1,4 @@
-# PM Interview Prep — Spec Compliance Checklist
+# Interview Q&A Panel — Spec Compliance Checklist
 
 Use this checklist to validate the completed app against the four source spec documents. Each item is a concrete manual test performable in the browser. The **Testable After** column tells you the earliest phase at which the test can be meaningfully run — run each test as soon as its phase is complete, not just at the end.
 

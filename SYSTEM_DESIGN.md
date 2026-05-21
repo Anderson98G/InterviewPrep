@@ -1,5 +1,5 @@
 # System Design Document
-## PM Interview Prep
+## Interview Q&A Panel
 
 **Version:** 1.0
 **Date:** 2026-04-22
@@ -34,7 +34,7 @@
 
 **Build command:** `npm run build` — outputs to `dist/`
 
-**Launch:** Place the `dist/` folder in a permanent location (e.g., `~/Documents/interview-prep/dist/`). Bookmark `dist/index.html` in Chrome. Open the bookmark to launch the app.
+**Launch:** Place the `dist/` folder in a permanent location (e.g., `~/Documents/interview-qa-panel/dist/`). Bookmark `dist/index.html` in Chrome. Open the bookmark to launch the app.
 
 **Why this approach:**
 - No server process required — no terminal to keep open, no process that can crash during a live interview
@@ -235,7 +235,7 @@ Note: this removes exactly one entry because it is called on every Save (the arr
 
 ### Export: `exportData(data)`
 
-Serializes the full `AppData` object to a pretty-printed JSON string (2-space indent). Constructs a filename in the format `interview-prep-export-YYYY-MM-DD.json` using the current date. Creates a `Blob` from the JSON string with MIME type `application/json`. Creates a temporary object URL from the blob and assigns it to a programmatically created anchor element with the `download` attribute set to the filename. Triggers a click on that anchor to initiate the browser's native file download. Revokes the object URL immediately after to release memory.
+Serializes the full `AppData` object to a pretty-printed JSON string (2-space indent). Constructs a filename in the format `interview-qa-panel-export-YYYY-MM-DD.json` using the current date. Creates a `Blob` from the JSON string with MIME type `application/json`. Creates a temporary object URL from the blob and assigns it to a programmatically created anchor element with the `download` attribute set to the filename. Triggers a click on that anchor to initiate the browser's native file download. Revokes the object URL immediately after to release memory.
 
 ### Import — two-pass algorithm
 
@@ -244,7 +244,7 @@ Serializes the full `AppData` object to a pretty-printed JSON string (2-space in
 Check in order (stop at first error):
 1. Is it valid JSON? → "File is not valid JSON and cannot be read" (pre-validation, before `validateImportedData()` is called)
 2. File size > 10MB? → "File exceeds 10MB and cannot be imported"
-3. Does it have `schemaVersion` and `entries`? → "File does not appear to be a PM Interview Prep export"
+3. Does it have `schemaVersion` and `entries`? → "File does not appear to be an Interview Q&A Panel export"
 4. For each entry: required fields present? → "Missing required field: [field] on entry [n]"
 5. For each entry: valid category? → "Unknown category '[value]' on entry [n]..."
 6. For each entry: exactly one `isActive: true` version? → "Entry [n] has no active answer version"

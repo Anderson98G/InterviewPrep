@@ -1,5 +1,5 @@
 # Function Contracts
-## PM Interview Prep
+## Interview Q&A Panel
 
 **Version:** 1.0
 **Date:** 2026-04-22
@@ -287,7 +287,7 @@ This document defines the contract for every named utility function in the codeb
 - Called in a browser context with access to `document`, `URL`, and `Blob`
 
 **Postconditions / Invariants:**
-- A file download is initiated with filename `interview-prep-export-YYYY-MM-DD.json`
+- A file download is initiated with filename `interview-qa-panel-export-YYYY-MM-DD.json`
 - The file contains the full `AppData` serialized as pretty-printed JSON (2-space indent)
 - The object URL is revoked immediately after the download is triggered
 - No data is modified; no localStorage write occurs
@@ -313,7 +313,7 @@ This document defines the contract for every named utility function in the codeb
 - If all checks pass, returns `void` and no data is modified
 - Checks are evaluated in strict order; the function throws on the first failure:
   1. `fileSizeBytes > 10_485_760` (10 MB) → throws `"File exceeds 10MB and cannot be imported"`
-  2. `parsed` is missing `schemaVersion` or `entries` → throws `"File does not appear to be a PM Interview Prep export"`
+  2. `parsed` is missing `schemaVersion` or `entries` → throws `"File does not appear to be an Interview Q&A Panel export"`
   3. Any entry is missing a required field (`id`, `question`, `category`, `order`, `versions`, `createdAt`, `lastEditedAt`) → throws `"Missing required field: [field] on entry [n]"`
   4. Any entry has a `category` value not in `CATEGORY_LIST` → throws `"Unknown category '[value]' on entry [n]"`
   5. Any entry has zero or more than one version with `isActive: true` → throws `"Entry [n] has no active answer version"` or `"Entry [n] has multiple active versions"`
